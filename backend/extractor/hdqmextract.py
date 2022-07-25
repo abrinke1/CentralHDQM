@@ -89,7 +89,7 @@ def get_all_available_runs():
   return list(runs)
 
 
-def extract_all_mes(cfg_files, runs, nprocs, all_files):
+def extract_all_mes(cfg_files, runs, nprocs, all_files, in_dataset, in_query):
   print('Processing %d configuration files...' % len(cfg_files))
   mes_set = set()
   good_files = 0
@@ -98,6 +98,8 @@ def extract_all_mes(cfg_files, runs, nprocs, all_files):
       parser = RawConfigParser()
       parser.read(unicode(cfg_file))
       for section in parser:
+        if in_query and not in_query in section:
+          continue
         if not section.startswith('plot:'):
           if section != 'DEFAULT':
             print('Invalid configuration section: %s:%s, skipping.' % (cfg_file, section))
@@ -122,7 +124,10 @@ def extract_all_mes(cfg_files, runs, nprocs, all_files):
 
   if not all_files:
     print('Listing files on EOS, this can take a while...')
-    all_files = glob(ROOTFILES)
+    eos_string = ROOTFILES
+    if in_dataset:
+      eos_string = eos_string.replace('DQMGUI_data/*/*', 'DQMGUI_data/*/%s' % in_dataset)
+    all_files = glob(eos_string)
     if len(all_files) == 0:
       print('GLOB returned 0 files, probably EOS is down. Aborting.')
       return
@@ -378,12 +383,16 @@ if __name__ == '__main__':
   parser.add_argument('-c', dest='config', nargs='+', help='Configuration files to process. If none were given, will process all available configuration files. Files must come from here: cfg/*/*.ini')
   parser.add_argument('-j', dest='nprocs', type=int, default=50, help='Number of processes to use for extraction.')
   parser.add_argument('-f', dest='files', type=str, nargs='+', help='DQM TDirectory ROOT files to take MEs from. If not provided, a dedicated EOS directory will be used.')
+  parser.add_argument('--dataset', dest='in_dataset', type=str, default=None, help='Primary datset to process. If none given, will process all available datatsets.')
+  parser.add_argument('--query', dest='in_query', type=str, default=None, help='Trend metric query. If none given, will process all available trends.')
   args = parser.parse_args()
 
   runs = args.runs
   config = args.config
   nprocs = args.nprocs
   all_files = args.files
+  in_dataset = args.in_dataset
+  in_query = args.in_query
 
   if nprocs < 0:
     print('Number of processes must be a positive integer')
@@ -399,4 +408,4 @@ if __name__ == '__main__':
       print('Configuration files must come from here: cfg/*/*.ini')
       exit()
 
-  extract_all_mes(config, runs, nprocs, all_files)
+  extract_all_mes(config, runs, nprocs, all_files, in_dataset, in_query)

@@ -120,9 +120,12 @@ def get_processing_string(dataset):
     return 'unknown'
 
 
-def calculate_all_trends(cfg_files, runs, nprocs):
+def calculate_all_trends(cfg_files, runs, nprocs, in_dataset, in_query):
   print('Processing %d configuration files...' % len(cfg_files))
   db_access.setup_db()
+
+  ## Paths to relevant histograms
+  relative_paths = []
   
   trend_count=0
   for cfg_file in cfg_files:
@@ -134,6 +137,9 @@ def calculate_all_trends(cfg_files, runs, nprocs):
     parser.read(unicode(cfg_file))
 
     for section in parser:
+      if in_query and not in_query in section:
+        continue
+
       if not section.startswith('plot:'):
         if(section != 'DEFAULT'):
           print('Invalid configuration section: %s:%s, skipping.' % (cfg_file, section))
@@ -153,6 +159,7 @@ def calculate_all_trends(cfg_files, runs, nprocs):
       parser[section]['subsystem'] = subsystem
       parser[section]['name'] = section.split(':')[1]
       CONFIG.append(parser[section])
+      relative_paths.append(parser[section]['relativePath'])
       trend_count+=1
 
   print('Starting to process %s trends.' % trend_count)
@@ -260,6 +267,10 @@ def calculate_all_trends(cfg_files, runs, nprocs):
       print('Fetching not processed data points from DB...')
       rows = session.execute(sql)
       rows = list(rows)
+      if in_dataset:
+        rows = list([r for r in rows if r[6].split('/')[1] == in_dataset])
+      if in_query:
+        rows = list([r for r in rows if r[5] in relative_paths])
       print('Fetched: %s' % len(rows))
       if len(rows) == 0:
         print('Queue to calculate is empty. Exiting.')
@@ -498,11 +509,15 @@ if __name__ == '__main__':
   parser.add_argument('-r', dest='runs', type=int, nargs='+', help='Runs to process. If none were given, will process all available runs.')
   parser.add_argument('-c', dest='config', nargs='+', help='Configuration files to process. If none were given, will process all available configuration files. Files must come from here: cfg/*/*.ini')
   parser.add_argument('-j', dest='nprocs', type=int, default=25, help='Number of processes to use for extraction.')
+  parser.add_argument('--dataset', dest='in_dataset', type=str, default=None, help='Primary datset to process. If none given, will process all available datatsets.')
+  parser.add_argument('--query', dest='in_query', type=str, default=None, help='Trend metric query. If none given, will process all available trends.')
   args = parser.parse_args()
 
   runs = args.runs
   config = args.config
   nprocs = args.nprocs
+  in_dataset = args.in_dataset
+  in_query = args.in_query
 
   if nprocs < 0:
     print('Number of processes must be a positive integer')
@@ -518,4 +533,4 @@ if __name__ == '__main__':
       print('Configuration files must come from here: cfg/*/*.ini')
       exit()
 
-  calculate_all_trends(config, runs, nprocs)
+  calculate_all_trends(config, runs, nprocs, in_dataset, in_query)
