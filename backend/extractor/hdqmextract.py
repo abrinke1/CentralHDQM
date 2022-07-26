@@ -89,7 +89,7 @@ def get_all_available_runs():
   return list(runs)
 
 
-def extract_all_mes(cfg_files, runs, nprocs, all_files, in_dataset, in_query):
+def extract_all_mes(cfg_files, runs, nprocs, all_files, in_dataset, in_query, from_run, to_run):
   print('Processing %d configuration files...' % len(cfg_files))
   mes_set = set()
   good_files = 0
@@ -127,6 +127,7 @@ def extract_all_mes(cfg_files, runs, nprocs, all_files, in_dataset, in_query):
     eos_string = ROOTFILES
     if in_dataset:
       eos_string = eos_string.replace('DQMGUI_data/*/*', 'DQMGUI_data/*/%s' % in_dataset)
+    print(eos_string)
     all_files = glob(eos_string)
     if len(all_files) == 0:
       print('GLOB returned 0 files, probably EOS is down. Aborting.')
@@ -136,13 +137,16 @@ def extract_all_mes(cfg_files, runs, nprocs, all_files, in_dataset, in_query):
     print('Using provided DQM files: %s' % len(all_files))
 
   # Filter on the runs that were passed by the user
-  if runs:
+  if runs or (from_run and to_run):
     filtered = []
     for file in all_files:
       run_match = RUNPATTERN.findall(file)
       if not len(run_match) == 0:
         run = run_match[0]
-        if int(run) in runs:
+        if (runs and int(run) in runs) or \
+           ((from_run and to_run) and \
+            (int(run) >= from_run and \
+             int(run) <= to_run)):
           filtered.append(file)
     all_files = filtered
 
@@ -290,7 +294,10 @@ def extract_mes(rows):
   tdirectory = None
   last_eos_path = None
 
+  nRows = len(rows)
+  iRow = 0
   for row in rows:
+    iRow += 1
     id = row['id']
     eos_path = row['eos_path']
     me_path = row['me_path']
@@ -353,7 +360,8 @@ def extract_mes(rows):
       session.execute('DELETE FROM queue_to_extract WHERE id = :id;', {'id': id})
       session.execute('INSERT INTO queue_to_calculate (me_id) VALUES (:me_id);', {'me_id': monitor_element.id})
       session.commit()
-      print('Added ME %s to DB: %s:%s' % (monitor_element.id, eos_path, me_path))
+      if iRow == 1 or iRow % int(nRows / 10) == 0:
+        print('Added ME %s (#%d / %d) to DB: %s:%s' % (monitor_element.id, iRow, nRows, eos_path, me_path))
     except IntegrityError as e:
       print('Insert ME IntegrityError: %s' % e)
       # ME already exists. Remove it from the queue_to_extract and add to queue_to_calculate
@@ -385,14 +393,14 @@ if __name__ == '__main__':
   parser.add_argument('-f', dest='files', type=str, nargs='+', help='DQM TDirectory ROOT files to take MEs from. If not provided, a dedicated EOS directory will be used.')
   parser.add_argument('--dataset', dest='in_dataset', type=str, default=None, help='Primary datset to process. If none given, will process all available datatsets.')
   parser.add_argument('--query', dest='in_query', type=str, default=None, help='Trend metric query. If none given, will process all available trends.')
+  parser.add_argument('--from_run', dest='from_run', type=int, default=None, help='First run to process')
+  parser.add_argument('--to_run', dest='to_run', type=int, default=None, help='Last run to process')
   args = parser.parse_args()
 
   runs = args.runs
   config = args.config
   nprocs = args.nprocs
   all_files = args.files
-  in_dataset = args.in_dataset
-  in_query = args.in_query
 
   if nprocs < 0:
     print('Number of processes must be a positive integer')
@@ -408,4 +416,6 @@ if __name__ == '__main__':
       print('Configuration files must come from here: cfg/*/*.ini')
       exit()
 
-  extract_all_mes(config, runs, nprocs, all_files, in_dataset, in_query)
+  extract_all_mes(config, runs, nprocs, all_files, \
+                  args.in_dataset, args.in_query, \
+                  args.from_run, args.to_run)

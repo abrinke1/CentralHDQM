@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+
 from __future__ import print_function
+
+VERBOSE = False
 
 from sys import argv
 from glob import glob
@@ -294,8 +297,14 @@ def calculate_all_trends(cfg_files, runs, nprocs, in_dataset, in_query):
 def calculate_trends(rows):
   db_access.dispose_engine()
 
+  nRows = len(rows)
+  iRow = 0
   for row in rows:
-    print('Calculating trend:', row['eos_path'], row['me_path'])
+    iRow += 1
+    if iRow == 1 or (iRow % int(nRows / 10)) == 0:
+      print('Calculating trend #%d / %d:' % (iRow, nRows))
+      print(row['eos_path'])
+      print(row['me_path'])
     # All configs referencing row['me_path'] as main me
     configs = [x for x in CONFIG if row['me_path'] in get_all_me_names(x['relativePath'])]
     
@@ -448,7 +457,7 @@ def calculate_trends(rows):
         except IntegrityError as e:
           print('Insert HistoricDataPoint error: %s' % e)
           session.rollback()
-          print('Updating...')
+          if VERBOSE: print('Updating...')
           try:
             historic_data_point_existing = session.query(db_access.HistoricDataPoint).filter(
               db_access.HistoricDataPoint.config_id == historic_data_point.config_id,
@@ -486,7 +495,7 @@ def calculate_trends(rows):
 
               session.execute('DELETE FROM queue_to_calculate WHERE id=:id;', {'id': row['id']})
               session.commit()
-              print('Updated.')
+              if VERBOSE: print('Updated.')
           except Exception as e:
             print('Update HistoricDataPoint error: %s' % e)
             session.rollback()
